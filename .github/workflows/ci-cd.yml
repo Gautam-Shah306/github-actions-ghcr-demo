@@ -1,0 +1,60 @@
+
+name: CI-CD - Build and Publish to GHCR
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build-and-push:
+    name: Validate, Build and Publish
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v6
+
+      - name: Validate application files
+        run: |
+          test -f Dockerfile
+          test -f index.html
+          grep -q "Hello from CI/CD Demo" index.html
+          echo "Validation passed."
+
+      - name: Set image name
+        id: image
+        run: |
+          IMAGE_NAME="ghcr.io/${GITHUB_REPOSITORY,,}"
+          echo "name=$IMAGE_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build Docker image
+        env:
+          IMAGE_NAME: ${{ steps.image.outputs.name }}
+        run: |
+          docker build \
+            --label "org.opencontainers.image.source=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" \
+            -t "$IMAGE_NAME:latest" \
+            -t "$IMAGE_NAME:$GITHUB_SHA" \
+            .
+
+      - name: Push image to GHCR
+        env:
+          IMAGE_NAME: ${{ steps.image.outputs.name }}
+        run: |
+          docker push "$IMAGE_NAME:latest"
+          docker push "$IMAGE_NAME:$GITHUB_SHA"
